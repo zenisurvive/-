@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { useState, useEffect, useMemo, useCallback } from 'react';
+import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { JobItem, RegionType, ViewMode } from './types';
 import { parseExcelBuffer, defaultSampleJobs } from './utils/excelParser';
 import { Header } from './components/Header';
@@ -11,6 +11,7 @@ import { FilterBar } from './components/FilterBar';
 import { JobCard } from './components/JobCard';
 import { JobTable } from './components/JobTable';
 import { StatsBanner } from './components/StatsBanner';
+import { Pagination } from './components/Pagination';
 import { SearchX, Loader2 } from 'lucide-react';
 
 export default function App() {
@@ -32,6 +33,15 @@ export default function App() {
       return new Set();
     }
   });
+
+  // Pagination state
+  const [currentPage, setCurrentPage] = useState(1);
+  const [itemsPerPage, setItemsPerPage] = useState<number>(() => {
+    const saved = localStorage.getItem('job_items_per_page');
+    return saved ? Number(saved) : 12;
+  });
+
+  const listContainerRef = useRef<HTMLDivElement>(null);
 
   // Background check for custom /jobs.xlsx if available
   const loadDefaultJobs = useCallback(async () => {
@@ -63,6 +73,11 @@ export default function App() {
     loadDefaultJobs();
   }, [loadDefaultJobs]);
 
+  // Reset to page 1 whenever filters change
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [searchTerm, selectedRegion, selectedCategory, showOnlyBookmarks]);
+
   // Persist bookmarks
   const toggleBookmark = (id: string) => {
     setBookmarkedIds((prev) => {
@@ -80,6 +95,19 @@ export default function App() {
   const handleViewModeChange = (mode: ViewMode) => {
     setViewMode(mode);
     localStorage.setItem('job_view_mode', mode);
+  };
+
+  const handleItemsPerPageChange = (count: number) => {
+    setItemsPerPage(count);
+    setCurrentPage(1);
+    localStorage.setItem('job_items_per_page', String(count));
+  };
+
+  const handlePageChange = (page: number) => {
+    setCurrentPage(page);
+    if (listContainerRef.current) {
+      listContainerRef.current.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
   };
 
   // Filtered jobs
@@ -129,6 +157,12 @@ export default function App() {
     });
   }, [allJobs, searchTerm, selectedRegion, selectedCategory, showOnlyBookmarks, bookmarkedIds]);
 
+  // Paginated slice
+  const paginatedJobs = useMemo(() => {
+    const start = (currentPage - 1) * itemsPerPage;
+    return filteredJobs.slice(start, start + itemsPerPage);
+  }, [filteredJobs, currentPage, itemsPerPage]);
+
   return (
     <div className="min-h-screen flex flex-col bg-slate-50 text-slate-800">
       {/* Header */}
@@ -165,54 +199,69 @@ export default function App() {
         />
 
         {/* Content State: Loading, Empty, or List */}
-        {loading ? (
-          <div className="py-20 flex flex-col items-center justify-center text-center">
-            <Loader2 className="w-10 h-10 text-indigo-600 animate-spin mb-4" />
-            <p className="text-slate-600 font-medium">전국 대학병원 채용공고 데이터를 불러오는 중입니다...</p>
-          </div>
-        ) : filteredJobs.length === 0 ? (
-          <div className="bg-white rounded-3xl border border-slate-200 p-12 text-center my-6">
-            <div className="w-14 h-14 mx-auto rounded-2xl bg-slate-100 text-slate-400 flex items-center justify-center mb-4">
-              <SearchX className="w-8 h-8" />
+        <div ref={listContainerRef} className="scroll-mt-24">
+          {loading ? (
+            <div className="py-20 flex flex-col items-center justify-center text-center">
+              <Loader2 className="w-10 h-10 text-indigo-600 animate-spin mb-4" />
+              <p className="text-slate-600 font-medium">전국 대학병원 채용공고 데이터를 불러오는 중입니다...</p>
             </div>
-            <h3 className="text-lg font-bold text-slate-800">일치하는 채용공고가 없습니다</h3>
-            <p className="text-slate-500 text-sm mt-1 max-w-md mx-auto">
-              {showOnlyBookmarks 
-                ? '관심 공고로 등록된 병원이 없습니다. 카드 또는 목록에서 북마크 아이콘을 눌러 추가해보세요.'
-                : '검색어나 지역 필터를 변경하시거나 전체 조회를 시도해보세요.'}
-            </p>
-            <div className="mt-5 flex items-center justify-center gap-3">
-              <button
-                onClick={() => {
-                  setSearchTerm('');
-                  setSelectedRegion('전국');
-                  setSelectedCategory('전체 분류');
-                  setShowOnlyBookmarks(false);
-                }}
-                className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-medium rounded-xl transition"
-              >
-                필터 전체 초기화
-              </button>
+          ) : filteredJobs.length === 0 ? (
+            <div className="bg-white rounded-3xl border border-slate-200 p-12 text-center my-6">
+              <div className="w-14 h-14 mx-auto rounded-2xl bg-slate-100 text-slate-400 flex items-center justify-center mb-4">
+                <SearchX className="w-8 h-8" />
+              </div>
+              <h3 className="text-lg font-bold text-slate-800">일치하는 채용공고가 없습니다</h3>
+              <p className="text-slate-500 text-sm mt-1 max-w-md mx-auto">
+                {showOnlyBookmarks 
+                  ? '관심 공고로 등록된 병원이 없습니다. 카드 또는 목록에서 북마크 아이콘을 눌러 추가해보세요.'
+                  : '검색어나 지역 필터를 변경하시거나 전체 조회를 시도해보세요.'}
+              </p>
+              <div className="mt-5 flex items-center justify-center gap-3">
+                <button
+                  onClick={() => {
+                    setSearchTerm('');
+                    setSelectedRegion('전국');
+                    setSelectedCategory('전체 분류');
+                    setShowOnlyBookmarks(false);
+                  }}
+                  className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-medium rounded-xl transition"
+                >
+                  필터 전체 초기화
+                </button>
+              </div>
             </div>
-          </div>
-        ) : viewMode === 'grid' ? (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
-            {filteredJobs.map((job) => (
-              <JobCard
-                key={job.id}
-                job={job}
-                isBookmarked={bookmarkedIds.has(job.id)}
-                onToggleBookmark={toggleBookmark}
+          ) : (
+            <>
+              {viewMode === 'grid' ? (
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
+                  {paginatedJobs.map((job) => (
+                    <JobCard
+                      key={job.id}
+                      job={job}
+                      isBookmarked={bookmarkedIds.has(job.id)}
+                      onToggleBookmark={toggleBookmark}
+                    />
+                  ))}
+                </div>
+              ) : (
+                <JobTable
+                  jobs={paginatedJobs}
+                  bookmarkedIds={bookmarkedIds}
+                  onToggleBookmark={toggleBookmark}
+                />
+              )}
+
+              {/* Pagination Controls */}
+              <Pagination
+                currentPage={currentPage}
+                totalItems={filteredJobs.length}
+                itemsPerPage={itemsPerPage}
+                onPageChange={handlePageChange}
+                onItemsPerPageChange={handleItemsPerPageChange}
               />
-            ))}
-          </div>
-        ) : (
-          <JobTable
-            jobs={filteredJobs}
-            bookmarkedIds={bookmarkedIds}
-            onToggleBookmark={toggleBookmark}
-          />
-        )}
+            </>
+          )}
+        </div>
       </main>
 
       {/* Footer */}
