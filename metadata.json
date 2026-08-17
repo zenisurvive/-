@@ -1,0 +1,6 @@
+{
+  "name": "임상병리사 채용 정보 센터",
+  "description": "전국 주요 대학병원 및 상급종합병원 임상병리사 채용 공고 정보 센터",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
