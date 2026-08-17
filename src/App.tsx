@@ -14,8 +14,8 @@ import { StatsBanner } from './components/StatsBanner';
 import { SearchX, Loader2 } from 'lucide-react';
 
 export default function App() {
-  const [allJobs, setAllJobs] = useState<JobItem[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [allJobs, setAllJobs] = useState<JobItem[]>(defaultSampleJobs);
+  const [loading, setLoading] = useState(false);
   
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedRegion, setSelectedRegion] = useState<RegionType>('전국');
@@ -33,22 +33,27 @@ export default function App() {
     }
   });
 
-  // Load jobs on boot
+  // Background check for custom /jobs.xlsx if available
   const loadDefaultJobs = useCallback(async () => {
-    setLoading(true);
     try {
-      const res = await fetch('/jobs.xlsx');
-      if (!res.ok) throw new Error('Cannot load /jobs.xlsx');
-      const buffer = await res.arrayBuffer();
-      const parsed = parseExcelBuffer(buffer);
-      if (parsed.length > 0) {
-        setAllJobs(parsed);
-      } else {
-        setAllJobs(defaultSampleJobs);
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 3000);
+      const res = await fetch('/jobs.xlsx', { signal: controller.signal });
+      clearTimeout(timeoutId);
+      
+      const contentType = res.headers.get('content-type') || '';
+      // Only parse if it's actually an octet-stream / excel file, not index.html SPA fallback
+      if (res.ok && !contentType.includes('text/html')) {
+        const buffer = await res.arrayBuffer();
+        if (buffer.byteLength > 100) {
+          const parsed = parseExcelBuffer(buffer);
+          if (parsed && parsed.length > 0) {
+            setAllJobs(parsed);
+          }
+        }
       }
-    } catch (err) {
-      console.warn('Failed to load /jobs.xlsx, using default dataset:', err);
-      setAllJobs(defaultSampleJobs);
+    } catch {
+      // Fallback is already loaded
     } finally {
       setLoading(false);
     }
